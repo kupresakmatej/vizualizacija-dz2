@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pizza Sales Visualization</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+
+        .chart-container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-around;
+        }
+
+        .chart {
+            margin: 20px;
+        }
+
+        .bar {
+            fill: steelblue;
+        }
+
+        .bar:hover {
+            fill: orange;
+        }
+
+        .axis-label {
+            font-size: 14px;
+        }
+
+        .title {
+            font-size: 20px;
+            text-anchor: middle;
+        }
+
+        .tooltip {
+            position: absolute;
+            text-align: center;
+            width: 60px;
+            height: 28px;
+            padding: 2px;
+            font: 12px sans-serif;
+            background: lightsteelblue;
+            border: 0px;
+            border-radius: 8px;
+            opacity: 0.8;
+            visibility: hidden;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Pizza Sales Visualization</h1>
+    <div class="chart-container">
+        <div id="bar-chart" class="chart"></div>
+        <div id="pie-chart" class="chart"></div>
+        <div id="scatter-plot" class="chart"></div>
+    </div>
+    <script src="https://d3js.org/d3.v6.min.js"></script>
+    <script>
+        d3.json("sales.json").then(data => {
+            const typeCount = {};
+            const sizeCount = {};
+            const typePrice = {};
+
+            data.forEach(d => {
+                if (typeCount[d.type]) {
+                    typeCount[d.type]++;
+                } else {
+                    typeCount[d.type] = 1;
+                }
+
+                if (sizeCount[d.size]) {
+                    sizeCount[d.size]++;
+                } else {
+                    sizeCount[d.size] = 1;
+                }
+
+                if (!typePrice[d.type]) {
+                    typePrice[d.type] = [];
+                }
+                typePrice[d.type].push(d.price);
+            });
+
+            const typeData = Object.keys(typeCount).map(key => ({ type: key, count: typeCount[key] }));
+            const sizeData = Object.keys(sizeCount).map(key => ({ size: key, count: sizeCount[key] }));
+            const scatterData = [];
+            Object.keys(typePrice).forEach(type => {
+                typePrice[type].forEach(price => {
+                    scatterData.push({ type, price });
+                });
+            });
+
+            const margin = { top: 40, right: 20, bottom: 60, left: 80 };
+            const width = 400 - margin.left - margin.right;
+            const height = 400 - margin.top - margin.bottom;
+
+            const xBar = d3.scaleBand()
+                .domain(typeData.map(d => d.type))
+                .range([0, width])
+                .padding(0.2);
+
+            const yBar = d3.scaleLinear()
+                .domain([0, d3.max(typeData, d => d.count)])
+                .range([height, 0]);
+
+            const barSvg = d3.select("#bar-chart")
+                .append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+
+            barSvg.append("g")
+                .attr("transform", `translate(0,${height})`)
+                .call(d3.axisBottom(xBar))
+                .selectAll("text")
+                .attr("transform", "rotate(-40)")
+                .style("text-anchor", "end");
+
+            barSvg.append("g")
+                .call(d3.axisLeft(yBar));
+
+            barSvg.selectAll(".bar")
+                .data(typeData)
+                .enter()
+                .append("rect")
+                .attr("class", "bar")
+                .attr("x", d => xBar(d.type))
+                .attr("y", d => yBar(d.count))
+                .attr("width", xBar.bandwidth())
+                .attr("height", d => height - yBar(d.count));
+
+            barSvg.append("text")
+                .attr("x", width / 2)
+                .attr("y", -10)
+                .attr("class", "title")
+                .text("Number of Pizzas Sold by Type");
+
+            const pieWidth = 400;
+            const pieHeight = 400;
+            const radius = Math.min(pieWidth, pieHeight) / 2 - margin.top;
+            const pie = d3.pie().value(d => d.count);
+            const arc = d3.arc().outerRadius(radius - 10).innerRadius(0);
+
+            const pieSvg = d3.select("#pie-chart")
+                .append("svg")
+                .attr("width", pieWidth)
+                .attr("height", pieHeight)
+                .append("g")
+                .attr("transform", `translate(${pieWidth / 2},${pieHeight / 2})`);
+
+            const color = d3.scaleOrdinal(d3.schemeCategory10);
+
+            const tooltip = d3.select("#pie-chart")
+                .append("div")
+                .attr("class", "tooltip");
+
+            const g = pieSvg.selectAll(".arc")
+                .data(pie(sizeData))
+                .enter()
+                .append("g")
+                .attr("class", "arc")
+                .on("mouseover", function (event, d) {
+                    const [x, y] = d3.pointer(event);
+                    tooltip.transition()
+                        .duration(200)
+                        .style("visibility", "visible")
+                        .style("left", "px")
+                        .style("top", "px");
+                    tooltip.html(d.data.size);
+                })
+                .on("mouseout", function () {
+                    tooltip.transition()
+                        .duration(200)
+                        .style("visibility", "hidden");
+                });
+
+            g.append("path")
+                .attr("d", arc)
+                .style("fill", d => color(d.data.size));
+
+            pieSvg.append("text")
+                .attr("x", 0)
+                .attr("y", -10)
+                .attr("class", "title")
+                .text("Distribution of Pizza Sizes");
+
+            const xScatter = d3.scaleLinear()
+                .domain([0, d3.max(scatterData, d => d.price)])
+                .range([0, width]);
+
+            const yScatter = d3.scaleBand()
+                .domain(scatterData.map(d => d.type))
+                .range([height, 0])
+                .padding(0.2);
+
+            const scatterSvg = d3.select("#scatter-plot")
+                .append("svg")
+                .attr("width", width + margin.left + margin.right)
+                .attr("height", height + margin.top + margin.bottom)
+                .append("g")
+                .attr("transform", `translate(${margin.left},${margin.top})`);
+
+            scatterSvg.append("g")
+                .call(d3.axisLeft(yScatter));
+
+            scatterSvg.append("g")
+                .attr("transform", `translate(0,${height})`)
+                .call(d3.axisBottom(xScatter));
+
+            scatterSvg.selectAll("circle")
+                .data(scatterData)
+                .enter()
+                .append("circle")
+                .attr("cx", d => xScatter(d.price))
+                .attr("cy", d => yScatter(d.type) + yScatter.bandwidth() / 2)
+                .attr("r", 5)
+                .style("fill", "steelblue")
+                .style("opacity", 0.7);
+
+            scatterSvg.append("text")
+                .attr("x", width / 2)
+                .attr("y", -10)
+                .attr("class", "title")
+                .text("Price Distribution of Pizzas by Type");
+        });
+    </script>
+</body>
+
+</html>
